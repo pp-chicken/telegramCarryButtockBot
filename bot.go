@@ -231,16 +231,21 @@ func main() {
 
 	i := 0
 	text := ""
+	var cstSh, _ = time.LoadLocation("Asia/Shanghai") //上海
 	tel.registerCron("0 */10 * * *", func() {
-		if tel.adminConversation.user.ID != 0 {
-			log.Println("第", i, "次消息通知")
-			text = "现在时间" + time.Now().Format("2006/01/02 15:04:05") + "\n 提臀小助手提醒您: 请注意提臀, 不要久坐, 保护屁股, 人人有责"
-			for _, v := range tel.remindList {
-				tel.sendTextMessage(text, v.chat.ID, 0)
+		now := time.Now()
+		Hour := now.Hour()
+		if Hour > 9 && Hour < 18 {
+			if tel.adminConversation.user.ID != 0 {
+				log.Println("今天第", i, "次消息通知")
+				text = "现在时间" + now.In(cstSh).Format("2006/01/02 15:04:05") + "\n 提臀小助手提醒您: 请注意提臀, 不要久坐, 保护屁股, 人人有责"
+				for _, v := range tel.remindList {
+					tel.sendTextMessage(text, v.chat.ID, 0)
+				}
+				i++
+			} else {
+				log.Println("提醒队列未注册")
 			}
-			i++
-		} else {
-			log.Println("提醒队列未注册")
 		}
 	})
 
