@@ -205,13 +205,26 @@ func newTelegramBot(apiToken string) *telegramBot {
 	return tel
 }
 
-func run() {
+func main() {
 	if err := godotenv.Load(".env"); err != nil {
 		log.Fatalln(err)
 		os.Exit(1)
 	}
 
-	fmt.Println("bot start!!!")
+	logFilePath := os.Getenv("LOG_OUTPUT_FILE_PATH")
+
+	if logFilePath == "" {
+		logFilePath = "./out_put.log"
+	}
+
+	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		fmt.Println("open log file failed, err:", err)
+		return
+	}
+	log.SetOutput(logFile)
+
+	log.Println("bot start!!!")
 	apiToken := os.Getenv("TELEGRAM_APITOKEN")
 
 	tel := newTelegramBot(apiToken)
@@ -232,8 +245,4 @@ func run() {
 	})
 
 	tel.getMessage()
-}
-
-func main() {
-	run()
 }
