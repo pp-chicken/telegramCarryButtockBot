@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/gob"
 	"fmt"
 	"log"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -20,6 +22,7 @@ type telegramBot struct {
 	chatID            int64
 	isAdmin           bool
 	auth              string
+	gobCacheFilePath  string
 	adminID           int
 	adminConversation *conversation
 	remindList        []*conversation
@@ -27,8 +30,18 @@ type telegramBot struct {
 }
 
 type conversation struct {
-	user *tgbotapi.User
-	chat *tgbotapi.Chat
+	User *tgbotapi.User
+	Chat *tgbotapi.Chat
+}
+
+type chacheConversation struct {
+	AdminConversation *conversation
+	RemindList        []*conversation
+}
+
+type chacheConversationHelper struct {
+	AdminConversation conversation
+	RemindList        []conversation
 }
 
 func (tel *telegramBot) getMessage() {
@@ -42,7 +55,6 @@ func (tel *telegramBot) getMessage() {
 		}
 
 		if update.Message.Text == "" {
-			fmt.Println(update.Message)
 			continue
 		}
 
@@ -97,7 +109,8 @@ func (tel *telegramBot) initMessageUserType() {
 
 func (tel *telegramBot) updateAdmin(user *tgbotapi.User, chat *tgbotapi.Chat) {
 	tel.adminID = user.ID
-	tel.adminConversation = &conversation{user: user, chat: chat}
+	tel.adminConversation = &conversation{User: user, Chat: chat}
+	tel.chache()
 }
 
 func (tel *telegramBot) GetAuth(l int) string {
@@ -114,11 +127,12 @@ func (tel *telegramBot) GetAuth(l int) string {
 
 func (tel *telegramBot) registerRemindList(con *conversation) bool {
 	for _, v := range tel.remindList {
-		if v.chat.ID == con.chat.ID {
+		if v.Chat.ID == con.Chat.ID {
 			return false
 		}
 	}
 	tel.remindList = append(tel.remindList, con)
+	tel.chache()
 	return true
 }
 
@@ -144,7 +158,7 @@ func (tel *telegramBot) switchFunc(update tgbotapi.Update, lenght int) {
 		}
 
 	case "提臀提醒":
-		if tel.registerRemindList(&conversation{user: update.Message.From, chat: update.Message.Chat}) {
+		if tel.registerRemindList(&conversation{User: update.Message.From, Chat: update.Message.Chat}) {
 			tel.returnTextMessage("注册提臀提醒成功, 每隔十分钟会向您发送提臀提醒")
 		} else {
 			tel.returnTextMessage("这个会话已经注册过提臀提醒了")
@@ -159,10 +173,10 @@ func (tel *telegramBot) switchFunc(update tgbotapi.Update, lenght int) {
 			time := tel.cron.Entries()[0].Next
 			text = "当前队列有" + strconv.Itoa(lenght) + "个用户将于" + time.Format("2006/01/02 15:04:05") + "开始提醒提臀\n分别为: \n"
 			for k, v := range tel.remindList {
-				if v.chat.IsSuperGroup() || v.chat.IsGroup() {
-					text += v.chat.Title
+				if v.Chat.IsSuperGroup() || v.Chat.IsGroup() {
+					text += v.Chat.Title
 				} else {
-					text += v.chat.UserName
+					text += v.Chat.UserName
 				}
 				if k < (lenght - 1) {
 					text += "\n"
@@ -170,6 +184,13 @@ func (tel *telegramBot) switchFunc(update tgbotapi.Update, lenght int) {
 			}
 		}
 		tel.returnTextMessage(text)
+		return
+	case "getAdminInfo":
+		if tel.isAdmin {
+			tel.returnTextMessage("当前管理员是: " + tel.adminConversation.User.UserName)
+		} else {
+			tel.return502()
+		}
 		return
 	default:
 		tel.returnTextMessage(update.Message.Text)
@@ -190,6 +211,45 @@ func (tel *telegramBot) registerCron(spec string, cmd func()) {
 	defer tel.cron.Stop()
 }
 
+func (tel *telegramBot) chache() {
+	cache := chacheConversation{AdminConversation: tel.adminConversation, RemindList: tel.remindList}
+
+	makePath(tel.gobCacheFilePath, 0777)
+	file, err := os.OpenFile(tel.gobCacheFilePath, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer file.Close()
+	enc := gob.NewEncoder(file)
+	enc.Encode(cache)
+}
+
+func (tel *telegramBot) readCache() {
+	makePath(tel.gobCacheFilePath, 0777)
+	File, err := os.OpenFile(tel.gobCacheFilePath, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer File.Close()
+
+	M := chacheConversationHelper{}
+	D := gob.NewDecoder(File)
+	D.Decode(&M)
+
+	tmpList := make([]*conversation, 0)
+	for _, v := range M.RemindList {
+		tmpList = append(tmpList, &v)
+	}
+
+	//还原admin信息
+	tel.adminID = M.AdminConversation.User.ID
+	tel.adminConversation = &conversation{User: M.AdminConversation.User, Chat: M.AdminConversation.Chat}
+	//还原提醒信息
+	tel.remindList = tmpList
+}
+
 func newTelegramBot(apiToken string) *telegramBot {
 	bot, err := tgbotapi.NewBotAPI(apiToken)
 	if err != nil {
@@ -205,6 +265,19 @@ func newTelegramBot(apiToken string) *telegramBot {
 	return tel
 }
 
+func makePath(path string, perm os.FileMode) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil || os.IsExist(err) {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		dir := filepath.Dir(path)
+		os.MkdirAll(dir, perm)
+		return true, nil
+	}
+	return false, err
+}
+
 func main() {
 	if err := godotenv.Load(".env"); err != nil {
 		log.Fatalln(err)
@@ -214,9 +287,10 @@ func main() {
 	logFilePath := os.Getenv("LOG_OUTPUT_FILE_PATH")
 
 	if logFilePath == "" {
-		logFilePath = "./out_put.log"
+		logFilePath = "./.tmp/out_put.log"
 	}
 
+	makePath(logFilePath, 0777)
 	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		fmt.Println("open log file failed, err:", err)
@@ -229,6 +303,13 @@ func main() {
 
 	tel := newTelegramBot(apiToken)
 
+	tmpCachePath := os.Getenv("GOB_CACHE_FILE_PATH")
+	if tmpCachePath == "" {
+		tmpCachePath = "./.tmp/cache.gob"
+	}
+	tel.gobCacheFilePath = tmpCachePath
+	tel.readCache()
+
 	i := 0
 	text := ""
 	var cstSh, _ = time.LoadLocation("Asia/Shanghai") //上海
@@ -236,11 +317,11 @@ func main() {
 		now := time.Now()
 		Hour := now.Hour()
 		if Hour > 9 && Hour < 18 {
-			if tel.adminConversation.user.ID != 0 {
+			if tel.adminConversation.User.ID != 0 {
 				log.Println("今天第", i, "次消息通知")
 				text = "现在时间" + now.In(cstSh).Format("2006/01/02 15:04:05") + "\n 提臀小助手提醒您: 请注意提臀, 不要久坐, 保护屁股, 人人有责"
 				for _, v := range tel.remindList {
-					tel.sendTextMessage(text, v.chat.ID, 0)
+					tel.sendTextMessage(text, v.Chat.ID, 0)
 				}
 				i++
 			} else {
