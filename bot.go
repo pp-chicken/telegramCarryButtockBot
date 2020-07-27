@@ -236,7 +236,9 @@ func (tel *telegramBot) readCache() {
 
 	M := chacheConversationHelper{}
 	D := gob.NewDecoder(File)
-	D.Decode(&M)
+	if D.Decode(&M) != nil {
+		return
+	}
 
 	tmpList := make([]*conversation, 0)
 	for _, v := range M.RemindList {
