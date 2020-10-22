@@ -159,7 +159,7 @@ func (tel *telegramBot) switchFunc(update tgbotapi.Update, lenght int) {
 
 	case "提臀提醒":
 		if tel.registerRemindList(&conversation{User: update.Message.From, Chat: update.Message.Chat}) {
-			tel.returnTextMessage("注册提臀提醒成功, 每隔十分钟会向您发送提臀提醒")
+			tel.returnTextMessage("注册提臀提醒成功, 每隔三十分钟会向您发送提臀提醒")
 		} else {
 			tel.returnTextMessage("这个会话已经注册过提臀提醒了")
 		}
