@@ -315,7 +315,7 @@ func main() {
 	i := 0
 	text := ""
 	var cstSh, _ = time.LoadLocation("Asia/Shanghai") //上海
-	tel.registerCron("0 */10 * * *", func() {
+	tel.registerCron("0 */30 * * *", func() {
 		now := time.Now()
 		Hour := now.Hour()
 		week := int(now.Weekday())
