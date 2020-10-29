@@ -2,9 +2,12 @@ package main
 
 import (
 	"encoding/gob"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math/rand"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -42,6 +45,29 @@ type chacheConversation struct {
 type chacheConversationHelper struct {
 	AdminConversation conversation
 	RemindList        []conversation
+}
+
+type holidayResult struct {
+	Code    int          `json:"code"`
+	Type    *holidayType `json:"type"`
+	Holiday *holidayInfo `json:"holiday"`
+}
+
+//{"type":0,"name":"周四","week":4}
+type holidayType struct {
+	Type int    `json:"type"`
+	Name string `json:"name"`
+	Week int    `json:"week"`
+}
+
+type holidayInfo struct {
+	Holiday bool      `json:"holiday"`
+	After   bool      `json:"after"`
+	Name    string    `json:"name"`
+	Wage    int       `json:"wage"`
+	Target  string    `json:"target"`
+	Date    time.Time `json:"date"`
+	Rest    int       `json:"rest"`
 }
 
 func (tel *telegramBot) getMessage() {
@@ -280,6 +306,26 @@ func makePath(path string, perm os.FileMode) (bool, error) {
 	return false, err
 }
 
+func getHoliday() bool {
+	now := time.Now()
+	week := int(now.Weekday())
+	resp, err := http.Get("http://timor.tech/api/holiday/info")
+	if err == nil {
+		defer resp.Body.Close()
+
+		body, readErr := ioutil.ReadAll(resp.Body)
+		if readErr == nil {
+			var formData holidayResult
+			jsonDecodeErr := json.Unmarshal(body, &formData)
+			if jsonDecodeErr == nil && formData.Code == 0 && formData.Holiday != nil {
+				return formData.Holiday.Holiday
+			}
+		}
+	}
+
+	return week == 0 || week == 6
+}
+
 func main() {
 	if err := godotenv.Load(".env"); err != nil {
 		log.Fatalln(err)
@@ -315,11 +361,14 @@ func main() {
 	i := 0
 	text := ""
 	var cstSh, _ = time.LoadLocation("Asia/Shanghai") //上海
+	workType := !getHoliday()
 	tel.registerCron("0 */30 * * *", func() {
 		now := time.Now()
 		Hour := now.Hour()
-		week := int(now.Weekday())
-		if week > 0 && week < 6 && Hour >= 9 && Hour < 18 {
+		if Hour == 0 {
+			workType = !getHoliday()
+		}
+		if workType && Hour >= 9 && Hour < 18 {
 			if len(tel.remindList) > 0 {
 				log.Println("今天第", i, "次消息通知")
 				text = "现在时间" + now.In(cstSh).Format("2006/01/02 15:04:05") + "\n 提臀小助手提醒您: 请注意提臀, 不要久坐, 保护屁股, 人人有责"
