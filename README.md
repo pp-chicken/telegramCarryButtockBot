@@ -1,6 +1,6 @@
 ### telegramCarryButtockBot telegram提臀小助手
 
-每隔`十分钟`发送一次提臀提醒, 保护屁股, 人人有责
+每隔`三十分钟`发送一次提臀提醒, 保护屁股, 人人有责
 
 ##### .env配置
 ``` .env
