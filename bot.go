@@ -22,6 +22,7 @@ type telegramBot struct {
 	bot               *tgbotapi.BotAPI
 	updates           tgbotapi.UpdatesChannel
 	messageID         int
+	messageType       int
 	chatID            int64
 	isAdmin           bool
 	auth              string
@@ -80,23 +81,23 @@ func (tel *telegramBot) getMessage() {
 			continue
 		}
 
-		if update.Message.Text == "" {
-			continue
-		}
-
 		tel.chatID = update.Message.Chat.ID
 		tel.isAdmin = update.Message.From.ID == tel.adminID
 
-		if update.Message.Chat.IsGroup() || update.Message.Chat.IsSuperGroup() {
-			if update.Message.Entities != nil {
-				for _, v := range *update.Message.Entities {
-					if v.Type == "mention" {
-						tel.switchFunc(update, v.Length+1)
+		if update.Message.Text != "" {
+			if update.Message.Chat.IsGroup() || update.Message.Chat.IsSuperGroup() {
+				if update.Message.Entities != nil {
+					for _, v := range *update.Message.Entities {
+						if v.Type == "mention" {
+							tel.switchFunc(update, v.Length+1)
+						}
 					}
 				}
+			} else {
+				tel.switchFunc(update, 0)
 			}
-		} else {
-			tel.switchFunc(update, 0)
+		} else if update.Message.Dice != nil {
+			tel.returnTextMessage(update.Message.Dice.Emoji)
 		}
 
 		tel.initMessageUserType()
@@ -117,7 +118,6 @@ func (tel *telegramBot) returnTextMessage(text string) {
 }
 
 func (tel *telegramBot) sendTextMessage(text string, chatID int64, replyToMessageID int) {
-
 	msg := tgbotapi.NewMessage(chatID, text)
 	if replyToMessageID != 0 {
 		msg.ReplyToMessageID = replyToMessageID
